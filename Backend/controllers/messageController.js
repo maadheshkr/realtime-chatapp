@@ -1,0 +1,60 @@
+const asyncHandler = require("express-async-handler");
+const Message = require("../models/Message");
+const User = require("../models/User");
+const Chat = require("../models/Chat");
+
+// --- 1. SEND MESSAGE ---
+const sendMessage = asyncHandler(async (req, res) => {
+  const { content, chatId } = req.body;
+
+  if (!content || !chatId) {
+    console.log("Invalid data passed into request");
+    return res.sendStatus(400);
+  }
+
+  var newMessage = {
+    sender: req.user._id,
+    content: content,
+    chat: chatId,
+  };
+
+  try {
+    var message = await Message.create(newMessage);
+
+    // Populate the sender's name and picture
+    message = await message.populate("sender", "name pic");
+    // Populate the chat details
+    message = await message.populate("chat");
+    // Populate the users inside that chat
+    message = await User.populate(message, {
+      path: "chat.users",
+      select: "name pic email",
+    });
+
+    // Update the Chat with the Latest Message
+    await Chat.findByIdAndUpdate(req.body.chatId, {
+      latestMessage: message,
+    });
+
+    res.json(message);
+  } catch (error) {
+    res.status(400);
+    throw new Error(error.message);
+  }
+});
+
+// --- 2. FETCH ALL MESSAGES ---
+const allMessages = asyncHandler(async (req, res) => {
+  try {
+    const messages = await Message.find({ chat: req.params.chatId })
+      .populate("sender", "name pic email")
+      .populate("chat");
+
+    res.json(messages);
+  } catch (error) {
+    res.status(400);
+    throw new Error(error.message);
+  }
+});
+
+module.exports = { sendMessage, allMessages };
